@@ -86,11 +86,6 @@ class StockIn(models.Model):
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def save(self, *args, **kwargs):
-        # 저장 시 Item.current_stock 자동 증가
-        self.item.current_stock += self.quantity
-        self.item.save()
-        super().save(*args, **kwargs)
 
     class Meta:
         db_table = 'stock_in'
