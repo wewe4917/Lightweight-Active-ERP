@@ -87,8 +87,8 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'erp_db',         # DB 이름
         'USER': 'root',           # MySQL 유저
-        'PASSWORD': '1234',
-        'HOST': 'localhost',
+        'PASSWORD': 'root',
+        'HOST': '127.0.0.1',
         'PORT': '3306',
     }
 }

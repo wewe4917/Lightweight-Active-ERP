@@ -49,24 +49,47 @@ def dashboard_stats(request):
     })
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([])
 def inventory_list(request):
-    items = Item.objects.all().order_by('code')
-    data = []
-    for item in items:
-        data.append({
-            'id': item.id,
-            'code': item.code,
-            'name': item.name,
-            'unit': item.unit,
-            'item_type': item.get_item_type_display(),
-            'current_stock': float(item.current_stock),
-            'safety_stock': float(item.safety_stock),
-            'unit_price': float(item.unit_price),
-            'is_low_stock': item.is_low_stock(),
-        })
-    return Response(data)
+    # 🚀 1. 리액트에서 데이터를 보냈을 때 (POST 요청)
+    if request.method == 'POST':
+        data = request.data
+        try:
+            # 전달받은 데이터로 DB에 새 아이템 생성(저장)
+            new_item = Item.objects.create(
+                code=data.get('code'),
+                name=data.get('name'),
+                unit=data.get('unit', 'EA'), # 없으면 기본값 EA
+                item_type=data.get('item_type', 'raw'),
+                safety_stock=data.get('safety_stock', 0),
+                current_stock=data.get('current_stock', 0),
+                unit_price=data.get('unit_price', 0),
+                description=data.get('description', '')
+            )
+            # 성공적으로 만들었다고 201 상태 코드와 함께 응답!
+            return Response({"message": "성공적으로 등록되었습니다!"}, status=201)
+        except Exception as e:
+            # 혹시 에러(예: 중복된 코드 등)가 나면 400 에러를 보냄
+            return Response({"error": str(e)}, status=400)
+
+    # 🔍 2. 리액트에서 목록을 달라고 할 때 (기존 GET 요청 로직)
+    elif request.method == 'GET':
+        items = Item.objects.all().order_by('code')
+        data = []
+        for item in items:
+            data.append({
+                'id': item.id,
+                'code': item.code,
+                'name': item.name,
+                'unit': item.unit,
+                'item_type': item.get_item_type_display(),
+                'current_stock': float(item.current_stock),
+                'safety_stock': float(item.safety_stock),
+                'unit_price': float(item.unit_price),
+                'is_low_stock': item.is_low_stock(),
+            })
+        return Response(data)
 
 
 @api_view(['POST'])
