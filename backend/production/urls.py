@@ -10,4 +10,5 @@ urlpatterns = [
     path('workorders/',             views.workorder_list),
     path('workorders/create/',      views.workorder_create),
     path('workorders/<int:order_id>/status/', views.workorder_status_update),
+    path('workorders/<int:order_id>/complete/', views.workorder_complete),
 ]

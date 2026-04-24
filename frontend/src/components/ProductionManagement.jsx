@@ -67,6 +67,30 @@ function ProductionManagement() {
       .catch(err => alert(err.response?.data?.error || '오류 발생'));
   };
 
+  // 완료 처리 함수 추가 (handleStatusChange 함수 아래에)
+const handleComplete = (order) => {
+  const actualQty = prompt(`실제 생산 수량 입력 (목표: ${order.target_qty})`, order.target_qty);
+  if (!actualQty) return;
+  const defectQty = prompt('불량 수량 입력', 0);
+
+  api.post(`/api/production/workorders/${order.id}/complete/`, {
+    actual_qty: Number(actualQty),
+    defect_qty: Number(defectQty),
+  })
+    .then(res => {
+      alert(`✅ ${res.data.message}\n완제품 현재 재고: ${res.data.product_stock}개`);
+      fetchWorkOrders();
+    })
+    .catch(err => {
+      const errData = err.response?.data;
+      if (errData?.shortage) {
+        alert(`❌ 재고 부족!\n${errData.shortage.join('\n')}`);
+      } else {
+        alert(errData?.error || '오류 발생');
+      }
+    });
+};
+
   if (loading) return <p>로딩 중...</p>;
 
   const activeOrders = workOrders.filter(o => o.status === 'in_progress');
@@ -135,7 +159,15 @@ function ProductionManagement() {
                     {order.status_display}
                   </span>
                 </td>
-                <td className="p-4 text-center">
+                <td className="p-4 text-center flex gap-2 justify-center">
+                  {order.status !== 'completed' && order.status !== 'cancelled' && (
+                    <button
+                      onClick={() => handleComplete(order)}
+                      className="px-3 py-1.5 bg-green-50 border border-green-300 text-green-600 hover:bg-green-100 rounded-md text-sm font-bold"
+                    >
+                      생산완료
+                    </button>
+                  )}
                   <select
                     value={order.status}
                     onChange={(e) => handleStatusChange(order.id, e.target.value)}

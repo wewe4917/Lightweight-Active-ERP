@@ -167,3 +167,70 @@ def stock_history(request, item_id):
         'stock_ins': list(stock_ins),
         'stock_outs': list(stock_outs),
     })
+    
+# 품목 생성
+@api_view(['POST'])
+@permission_classes([])
+def item_create(request):
+    code        = request.data.get('code')
+    name        = request.data.get('name')
+    unit        = request.data.get('unit', 'EA')
+    item_type   = request.data.get('item_type')
+    safety_stock = request.data.get('safety_stock', 0)
+    unit_price  = request.data.get('unit_price', 0)
+    description = request.data.get('description', '')
+
+    if not code or not name or not item_type:
+        return Response({'error': '품번, 품목명, 카테고리는 필수입니다'}, status=400)
+
+    if Item.objects.filter(code=code).exists():
+        return Response({'error': '이미 존재하는 품번입니다'}, status=400)
+
+    item = Item.objects.create(
+        code=code,
+        name=name,
+        unit=unit,
+        item_type=item_type,
+        safety_stock=safety_stock,
+        unit_price=unit_price,
+        description=description,
+    )
+    return Response({
+        'message': '품목 등록 완료',
+        'id': item.id,
+        'name': item.name,
+        'code': item.code,
+    })
+
+
+# 품목 상세 조회 및 수정
+@api_view(['GET', 'PUT'])
+@permission_classes([])
+def item_detail(request, item_id):
+    try:
+        item = Item.objects.get(id=item_id)
+    except Item.DoesNotExist:
+        return Response({'error': '품목 없음'}, status=404)
+
+    if request.method == 'GET':
+        return Response({
+            'id': item.id,
+            'code': item.code,
+            'name': item.name,
+            'unit': item.unit,
+            'item_type': item.item_type,
+            'safety_stock': float(item.safety_stock),
+            'current_stock': float(item.current_stock),
+            'unit_price': float(item.unit_price),
+            'description': item.description,
+        })
+
+    if request.method == 'PUT':
+        item.name         = request.data.get('name', item.name)
+        item.unit         = request.data.get('unit', item.unit)
+        item.item_type    = request.data.get('item_type', item.item_type)
+        item.safety_stock = request.data.get('safety_stock', item.safety_stock)
+        item.unit_price   = request.data.get('unit_price', item.unit_price)
+        item.description  = request.data.get('description', item.description)
+        item.save()
+        return Response({'message': '품목 수정 완료', 'name': item.name})

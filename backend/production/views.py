@@ -180,3 +180,74 @@ def workorder_status_update(request, order_id):
         'order_number': order.order_number,
         'status': order.status,
     })
+
+@api_view(['POST'])
+@permission_classes([])
+def workorder_complete(request, order_id):
+    from inventory.models import Item, BOM, StockOut
+    from decimal import Decimal
+
+    try:
+        order = WorkOrder.objects.get(id=order_id)
+    except WorkOrder.DoesNotExist:
+        return Response({'error': '작업지시서를 찾을 수 없습니다'}, status=404)
+
+    if order.status == 'completed':
+        return Response({'error': '이미 완료된 작업지시서입니다'}, status=400)
+
+    # BOM 조회
+    boms = BOM.objects.filter(product=order.product)
+    if not boms.exists():
+        return Response({'error': 'BOM이 등록되지 않은 제품입니다'}, status=400)
+
+    actual_qty = request.data.get('actual_qty', order.target_qty)
+    defect_qty = request.data.get('defect_qty', 0)
+
+    # 재고 부족 사전 체크
+    shortage_list = []
+    for bom in boms:
+        required = Decimal(str(actual_qty)) * bom.quantity
+        if bom.material.current_stock < required:
+            shortage_list.append(
+                f"{bom.material.name} (필요: {required}, 현재: {bom.material.current_stock})"
+            )
+
+    if shortage_list:
+        return Response({
+            'error': '재고 부족으로 완료 처리 불가',
+            'shortage': shortage_list
+        }, status=400)
+
+    # 트랜잭션으로 원자재 차감 + 완제품 증가
+    with transaction.atomic():
+        for bom in boms:
+            required = Decimal(str(actual_qty)) * bom.quantity
+            # 원자재 재고 차감
+            bom.material.current_stock -= required
+            bom.material.save()
+            # 출고 이력 기록
+            StockOut.objects.create(
+                item=bom.material,
+                quantity=required,
+                purpose='production',
+                note=f'작업지시서 {order.order_number} 생산 투입',
+            )
+
+        # 완제품 재고 증가
+        order.product.current_stock += Decimal(str(actual_qty))
+        order.product.save()
+
+        # 작업지시서 완료 처리
+        order.status = 'completed'
+        order.actual_qty = actual_qty
+        order.defect_qty = defect_qty
+        order.completed_at = timezone.now()
+        order.save()
+
+    return Response({
+        'message': f'생산 완료 처리 완료',
+        'order_number': order.order_number,
+        'actual_qty': float(actual_qty),
+        'product': order.product.name,
+        'product_stock': float(order.product.current_stock),
+    })
