@@ -234,3 +234,34 @@ def item_detail(request, item_id):
         item.description  = request.data.get('description', item.description)
         item.save()
         return Response({'message': '품목 수정 완료', 'name': item.name})
+    
+@api_view(['GET'])
+@permission_classes([])
+def partner_list(request):
+    from .models import Partner
+    partners = Partner.objects.all().order_by('name')
+    data = [{'id': p.id, 'name': p.name, 'partner_type': p.partner_type} for p in partners]
+    return Response(data)
+
+@api_view(['POST'])
+@permission_classes([])
+def partner_create(request):
+    from .models import Partner
+    code         = request.data.get('code')
+    name         = request.data.get('name')
+    partner_type = request.data.get('partner_type')
+    contact_name = request.data.get('contact_name', '')
+    phone        = request.data.get('phone', '')
+    email        = request.data.get('email', '')
+
+    if not code or not name or not partner_type:
+        return Response({'error': '코드, 이름, 유형은 필수입니다'}, status=400)
+
+    if Partner.objects.filter(code=code).exists():
+        return Response({'error': '이미 존재하는 코드입니다'}, status=400)
+
+    partner = Partner.objects.create(
+        code=code, name=name, partner_type=partner_type,
+        contact_name=contact_name, phone=phone, email=email,
+    )
+    return Response({'message': '거래처 등록 완료', 'id': partner.id, 'name': partner.name})

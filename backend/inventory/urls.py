@@ -9,4 +9,7 @@ urlpatterns = [
     path('stock-in/',                 views.stock_in_create),
     path('stock-out/',                views.stock_out_create),
     path('history/<int:item_id>/',    views.stock_history),
+    path('partners/', views.partner_list),
+    path('partners/',        views.partner_list),
+    path('partners/create/', views.partner_create),
 ]
