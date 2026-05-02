@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-
+from .views import ocr_document
 urlpatterns = [
     path('dashboard/',                views.dashboard_stats),
     path('items/',                    views.inventory_list),
@@ -12,4 +12,6 @@ urlpatterns = [
     path('partners/', views.partner_list),
     path('partners/',        views.partner_list),
     path('partners/create/', views.partner_create),
+    path('ocr/', ocr_document),
+
 ]

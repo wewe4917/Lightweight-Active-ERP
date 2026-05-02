@@ -306,3 +306,4 @@ def dn_complete(request, dn_id):
         'quantity': float(dn.quantity),
         'current_stock': float(dn.item.current_stock),
     })
+    

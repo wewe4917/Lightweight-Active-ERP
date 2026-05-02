@@ -7,6 +7,10 @@ from django.utils import timezone
 from decimal import Decimal
 from .models import Item, Partner, StockIn, StockOut
 from production.models import WorkOrder
+import uuid
+import base64
+import requests as req
+from django.conf import settings
 
 
 @api_view(['GET'])
@@ -265,3 +269,105 @@ def partner_create(request):
         contact_name=contact_name, phone=phone, email=email,
     )
     return Response({'message': '거래처 등록 완료', 'id': partner.id, 'name': partner.name})
+
+
+@api_view(['POST'])
+def ocr_document(request):
+    image_file = request.FILES.get('image')
+    if not image_file:
+        return Response({'error': '이미지가 없습니다'}, status=400)
+
+    image_data = base64.b64encode(image_file.read()).decode('utf-8')
+
+    filename = image_file.name.lower()
+    if filename.endswith('.png'):
+        fmt = 'png'
+    elif filename.endswith('.pdf'):
+        fmt = 'pdf'
+    else:
+        fmt = 'jpg'
+
+    payload = {
+        "version": "V2",
+        "requestId": str(uuid.uuid4()),
+        "timestamp": 0,
+        "images": [{"format": fmt, "name": "delivery_note", "data": image_data}]
+    }
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-OCR-SECRET": "="
+    }
+
+    OCR_URL = ""
+
+    try:
+        res = req.post(OCR_URL, json=payload, headers=headers, timeout=30)
+        result = res.json()
+    except Exception as e:
+        return Response({'error': f'OCR API 호출 실패: {str(e)}'}, status=500)
+
+    try:
+        fields = result['images'][0]['fields']
+        full_text = ' '.join([f['inferText'] for f in fields])
+        lines = extract_lines(fields)
+    except (KeyError, IndexError):
+        return Response({'error': 'OCR 인식 실패', 'raw': result}, status=400)
+
+    parsed_items = parse_delivery_note(lines)
+
+    return Response({
+        'raw_text': full_text,
+        'parsed_items': parsed_items
+    })
+    
+def extract_lines(fields):
+    lines = {}
+    for field in fields:
+        y = round(field['boundingPoly']['vertices'][0]['y'] / 15)
+        if y not in lines:
+            lines[y] = []
+        lines[y].append(field['inferText'])
+    return [' '.join(words) for _, words in sorted(lines.items())]
+
+
+def parse_delivery_note(lines):
+    import re
+    items = []
+    
+    # 이 키워드 포함된 줄은 품목이 아니므로 제외
+    skip_keywords = ['발행일', '문서번호', '사업자번호', '대표', '상호', '납품기한', 
+                     '납품 기한', '납품장소', '납품 장소', '합계', '비고', '공급자', 
+                     '수급자', '납품서', '확인', '서명', '주소', '전화', 'TEL', 'FAX']
+    
+    for line in lines:
+        # 스킵 키워드 있으면 제외
+        if any(kw in line for kw in skip_keywords):
+            continue
+        
+        # 숫자가 아예 없는 줄 제외
+        if not re.search(r'\d', line):
+            continue
+
+        # 줄 끝쪽 숫자를 수량으로 잡기 (마지막 등장 숫자 덩어리)
+        numbers = re.findall(r'\d+', line)
+        if not numbers:
+            continue
+
+        qty = int(numbers[-1])  # 마지막 숫자 = 수량
+        
+        # 수량 범위 필터 (0이하, 너무 큰 수, 연도 제외)
+        if qty <= 0 or qty >= 10000 or qty in [2025, 2024, 2023]:
+            continue
+
+        # 품목명: 숫자/단위 제거하고 남은 텍스트
+        name = re.sub(r'\s*\d+\s*(개|EA|ea|BOX|box|pcs|PCS|kg|KG)?\s*$', '', line).strip()
+        name = re.sub(r'\s+', ' ', name).strip()
+
+        # 너무 짧거나 숫자만 있는 건 제외
+        if len(name) < 2 or re.match(r'^[\d\s\.\-\/]+$', name):
+            continue
+
+        items.append({'name': name, 'quantity': qty})
+
+    return items
