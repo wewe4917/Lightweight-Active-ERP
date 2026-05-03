@@ -109,7 +109,7 @@ const handleComplete = (order) => {
 
       {/* 가동 중인 생산 라인 */}
       <h2 className="text-xl font-bold text-gray-800 mb-4">가동 중인 생산 라인</h2>
-      <div className="grid grid-cols-2 gap-6 mb-10">
+      <div className="grid grid-cols-2 gap-6 mb-10 max-h-[320px] overflow-y-auto pr-1">
         {activeOrders.length > 0 ? activeOrders.map(order => (
           <div key={order.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
             <div className="flex justify-between items-center mb-4">
@@ -137,7 +137,7 @@ const handleComplete = (order) => {
 
       {/* 작업 지시서 목록 */}
       <h2 className="text-xl font-bold text-gray-800 mb-4">작업 지시 목록 (Work Orders)</h2>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-h-[400px] overflow-y-auto">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-gray-200 text-sm text-gray-500 uppercase tracking-wider">

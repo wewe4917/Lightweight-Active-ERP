@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 
 function MasterDataForm() {
-  const [activeTab, setActiveTab] = useState('item'); // 'item' or 'partner'
+  const [activeTab, setActiveTab] = useState('item');
 
   // ── 품목 상태 ──────────────────────────────────────
   const [itemList, setItemList] = useState([]);
@@ -71,6 +71,14 @@ function MasterDataForm() {
     }
   };
 
+  const handleItemDelete = () => {
+    if (!selectedItem) return;
+    if (!window.confirm(`"${selectedItem.name}" 품목을 삭제하시겠습니까?\n연결된 재고/BOM 데이터도 함께 삭제될 수 있습니다.`)) return;
+    api.delete(`/api/inventory/items/${selectedItem.id}/delete/`)
+      .then(() => { alert('삭제 완료'); handleItemReset(); fetchItems(); })
+      .catch(err => alert(err.response?.data?.error || '삭제 실패'));
+  };
+
   // ── 거래처 핸들러 ──────────────────────────────────
   const handlePartnerChange = (e) => {
     setPartnerForm({ ...partnerForm, [e.target.name]: e.target.value });
@@ -100,6 +108,14 @@ function MasterDataForm() {
     api.post('/api/inventory/partners/create/', partnerForm)
       .then(res => { alert(`✅ ${res.data.message}`); handlePartnerReset(); fetchPartners(); })
       .catch(err => alert(err.response?.data?.error || '오류 발생'));
+  };
+
+  const handlePartnerDelete = () => {
+    if (!selectedPartner) return;
+    if (!window.confirm(`"${selectedPartner.name}" 거래처를 삭제하시겠습니까?`)) return;
+    api.delete(`/api/inventory/partners/${selectedPartner.id}/delete/`)
+      .then(() => { alert('삭제 완료'); handlePartnerReset(); fetchPartners(); })
+      .catch(err => alert(err.response?.data?.error || '삭제 실패'));
   };
 
   const getCategoryLabel = (type) => {
@@ -151,14 +167,13 @@ function MasterDataForm() {
       {/* ── 품목 탭 ── */}
       {activeTab === 'item' && (
         <div className="flex gap-6 min-h-[600px]">
-          {/* 좌측 리스트 */}
           <div className="w-1/3 bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-fit">
             <h2 className="text-lg font-bold text-gray-800 mb-4">등록 품목 리스트</h2>
             <button onClick={handleItemReset}
               className="w-full mb-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-md hover:bg-slate-900">
               + 새 품목 등록
             </button>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
               {itemList.map(item => (
                 <div key={item.id} onClick={() => handleSelectItem(item)}
                   className={`p-3 rounded-lg cursor-pointer transition-colors ${
@@ -172,7 +187,6 @@ function MasterDataForm() {
             </div>
           </div>
 
-          {/* 우측 폼 */}
           <div className="w-2/3 bg-white p-8 rounded-xl shadow-sm border border-gray-200 flex flex-col">
             <h2 className="text-lg font-bold text-gray-800 mb-6">
               {selectedItem ? `${selectedItem.name} 수정` : '품목 정보 입력'}
@@ -214,6 +228,12 @@ function MasterDataForm() {
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-8 border-t border-gray-100 pt-6">
+              {selectedItem && (
+                <button onClick={handleItemDelete}
+                  className="px-6 py-2 bg-red-500 text-white rounded-md font-medium hover:bg-red-600">
+                  삭제하기
+                </button>
+              )}
               <button onClick={handleItemReset}
                 className="px-6 py-2 border border-gray-300 text-gray-600 rounded-md font-medium hover:bg-gray-50">
                 초기화
@@ -230,14 +250,13 @@ function MasterDataForm() {
       {/* ── 거래처 탭 ── */}
       {activeTab === 'partner' && (
         <div className="flex gap-6 min-h-[600px]">
-          {/* 좌측 리스트 */}
           <div className="w-1/3 bg-white p-6 rounded-xl shadow-sm border border-gray-200 h-fit">
             <h2 className="text-lg font-bold text-gray-800 mb-4">등록 거래처 리스트</h2>
             <button onClick={handlePartnerReset}
               className="w-full mb-4 py-2 bg-slate-800 text-white text-sm font-bold rounded-md hover:bg-slate-900">
               + 새 거래처 등록
             </button>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 max-h-[480px] overflow-y-auto pr-1">
               {partnerList.map(partner => (
                 <div key={partner.id} onClick={() => handleSelectPartner(partner)}
                   className={`p-3 rounded-lg cursor-pointer transition-colors ${
@@ -251,7 +270,6 @@ function MasterDataForm() {
             </div>
           </div>
 
-          {/* 우측 폼 */}
           <div className="w-2/3 bg-white p-8 rounded-xl shadow-sm border border-gray-200 flex flex-col">
             <h2 className="text-lg font-bold text-gray-800 mb-6">
               {selectedPartner ? `${selectedPartner.name} 정보` : '거래처 정보 입력'}
@@ -288,6 +306,12 @@ function MasterDataForm() {
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-8 border-t border-gray-100 pt-6">
+              {selectedPartner && (
+                <button onClick={handlePartnerDelete}
+                  className="px-6 py-2 bg-red-500 text-white rounded-md font-medium hover:bg-red-600">
+                  삭제하기
+                </button>
+              )}
               <button onClick={handlePartnerReset}
                 className="px-6 py-2 border border-gray-300 text-gray-600 rounded-md font-medium hover:bg-gray-50">
                 초기화

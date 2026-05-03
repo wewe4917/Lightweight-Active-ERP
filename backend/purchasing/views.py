@@ -5,7 +5,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from decimal import Decimal
 from .models import PurchaseOrder, PurchaseOrderItem, DeliveryNote
-
+import uuid, base64, re
+import requests as req
 # ── 발주서 목록 조회 ──────────────────────────────────
 @api_view(['GET'])
 @permission_classes([])
@@ -306,4 +307,175 @@ def dn_complete(request, dn_id):
         'quantity': float(dn.quantity),
         'current_stock': float(dn.item.current_stock),
     })
-    
+
+@api_view(['POST'])
+@permission_classes([])
+def ocr_po_match(request):
+    from inventory.models import Partner, Item
+
+    image_file = request.FILES.get('image')
+    if not image_file:
+        return Response({'error': '이미지가 없습니다'}, status=400)
+
+    image_data = base64.b64encode(image_file.read()).decode('utf-8')
+    filename = image_file.name.lower()
+    fmt = 'png' if filename.endswith('.png') else 'pdf' if filename.endswith('.pdf') else 'jpg'
+
+    payload = {
+        "version": "V2",
+        "requestId": str(uuid.uuid4()),
+        "timestamp": 0,
+        "images": [{"format": fmt, "name": "delivery_note", "data": image_data}]
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-OCR-SECRET": "dHRrWmtVelRYWUhteXJuaWJPYlZ3V0xEVFJKRWF4dEQ="
+    }
+    OCR_URL = "https://izkahjdx3k.apigw.ntruss.com/custom/v1/52471/b25f51bc1cca3d42c9908bd70757af3ce3549ae72fc9c353d6f4f326f193b1aa/general"
+
+    try:
+        res = req.post(OCR_URL, json=payload, headers=headers, timeout=30)
+        result = res.json()
+    except Exception as e:
+        return Response({'error': f'OCR API 호출 실패: {str(e)}'}, status=500)
+
+    try:
+        fields = result['images'][0]['fields']
+    except (KeyError, IndexError):
+        return Response({'error': 'OCR 인식 실패', 'raw': result}, status=400)
+
+    full_text = ' '.join([f['inferText'] for f in fields])
+
+    # 줄 단위로 묶기
+    lines_dict = {}
+    for field in fields:
+        y = round(field['boundingPoly']['vertices'][0]['y'] / 15)
+        lines_dict.setdefault(y, []).append(field['inferText'])
+    lines = [' '.join(words) for _, words in sorted(lines_dict.items())]
+
+    # 거래처 인식
+    all_partners = Partner.objects.all()        
+    # 이렇게 교체 - (주) 같은 접두어 제거 후 매칭
+    import re as _re
+    matched_partner = None
+    full_text_clean = _re.sub(r'[\(\)주()（）]', '', full_text)  # 괄호/주 제거
+
+    for p in all_partners:
+        partner_clean = _re.sub(r'[\(\)주()（）]', '', p.name)
+        if partner_clean in full_text_clean:
+            matched_partner = p
+            break
+
+    # 품번 + 수량 인식
+    all_items = Item.objects.all()
+    item_code_map = {i.code.upper(): i for i in all_items}
+    ocr_items = []
+
+    for line in lines:
+        code_match = re.search(r'[A-Za-z0-9]+-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*', line)
+        if not code_match:
+            continue
+        extracted_code = code_match.group(0).upper()
+        found_item = item_code_map.get(extracted_code)
+        if not found_item:
+            continue
+
+        numbers = re.findall(r'\d+', line)
+        qty = 0
+        for n in reversed(numbers):
+            val = int(n)
+            if 0 < val < 10000 and val not in [2025, 2024, 2023]:
+                qty = val
+                break
+        if qty == 0:
+            continue
+
+        ocr_items.append({
+            'item_id': found_item.id,
+            'item_code': found_item.code,
+            'item_name': found_item.name,
+            'quantity': qty,
+        })
+
+    # sent 상태 발주서 중에서 거래처 + 품번 + 수량 대조
+    matched_results = []
+    if matched_partner:
+        sent_orders = PurchaseOrder.objects.filter(
+            status='sent',
+            partner=matched_partner
+        ).prefetch_related('items')
+
+        for po in sent_orders:
+            po_item_map = {
+                poi.item.code.upper(): poi
+                for poi in po.items.all()
+            }
+            for ocr_item in ocr_items:
+                poi = po_item_map.get(ocr_item['item_code'].upper())
+                if poi:
+                    matched_results.append({
+                        'po_id': po.id,
+                        'po_number': po.po_number,
+                        'partner_name': matched_partner.name,
+                        'item_id': poi.item.id,
+                        'item_code': poi.item.code,
+                        'item_name': poi.item.name,
+                        'quantity': float(ocr_item['quantity']),      # 납품서 수량
+                        'po_quantity': float(poi.quantity),            # 발주 수량
+                        'quantity_mismatch': float(poi.quantity) != float(ocr_item['quantity']),
+                        'unit_price': float(poi.unit_price),
+                        'selected': True,
+                    })
+
+    return Response({
+        'raw_text': full_text,
+        'partner_name': matched_partner.name if matched_partner else None,
+        'ocr_items': ocr_items,
+        'matched_results': matched_results,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([])
+def ocr_po_complete(request):
+    from inventory.models import StockIn
+
+    items = request.data.get('items', [])
+    if not items:
+        return Response({'error': '처리할 항목이 없습니다'}, status=400)
+
+    completed_pos = set()
+    with transaction.atomic():
+        for item in items:
+            po_id = item.get('po_id')
+            item_id = item.get('item_id')
+            quantity = item.get('quantity')
+
+            try:
+                po = PurchaseOrder.objects.get(id=po_id, status='sent')
+                poi = po.items.get(item__id=item_id)
+            except Exception:
+                continue
+
+            # 재고 증가
+            poi.item.current_stock += poi.quantity
+            poi.item.save()
+
+            # 입고 이력
+            StockIn.objects.create(
+                item=poi.item,
+                partner=po.partner,
+                quantity=poi.quantity,
+                unit_price=poi.unit_price,
+                note=f'납품서 OCR 입고 - {po.po_number}',
+            )
+
+            completed_pos.add(po_id)
+
+        # 발주서 전체 품목이 다 처리됐으면 입고완료로 변경
+        for po_id in completed_pos:
+            po = PurchaseOrder.objects.get(id=po_id)
+            po.status = 'received'
+            po.save()
+
+    return Response({'message': f'{len(items)}건 입고완료 처리되었습니다'})
