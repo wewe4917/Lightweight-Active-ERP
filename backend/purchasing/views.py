@@ -329,9 +329,9 @@ def ocr_po_match(request):
     }
     headers = {
         "Content-Type": "application/json",
-        "X-OCR-SECRET": "dHRrWmtVelRYWUhteXJuaWJPYlZ3V0xEVFJKRWF4dEQ="
+        "X-OCR-SECRET": "="
     }
-    OCR_URL = "https://izkahjdx3k.apigw.ntruss.com/custom/v1/52471/b25f51bc1cca3d42c9908bd70757af3ce3549ae72fc9c353d6f4f326f193b1aa/general"
+    OCR_URL = ""
 
     try:
         res = req.post(OCR_URL, json=payload, headers=headers, timeout=30)
