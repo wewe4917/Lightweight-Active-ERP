@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import api from '../api';
 import OcrModal from './OcrModal';
 
-// ── 납품지시서 섹션 컴포넌트 ──────────────────────────
 function DeliverySection() {
   const [dnList, setDnList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,9 +51,7 @@ function DeliverySection() {
         </thead>
         <tbody className="divide-y divide-gray-100">
           {dnList.length === 0 && (
-            <tr>
-              <td colSpan={7} className="p-8 text-center text-gray-400">등록된 납품지시서 없음</td>
-            </tr>
+            <tr><td colSpan={7} className="p-8 text-center text-gray-400">등록된 납품지시서 없음</td></tr>
           )}
           {dnList.map(dn => (
             <tr key={dn.id} className="hover:bg-slate-50 transition-colors">
@@ -67,15 +64,11 @@ function DeliverySection() {
                   {dn.status_display}
                 </span>
               </td>
-              <td className="p-4 text-center text-gray-500 text-sm">
-                {dn.delivered_date || '-'}
-              </td>
+              <td className="p-4 text-center text-gray-500 text-sm">{dn.delivered_date || '-'}</td>
               <td className="p-4 text-center">
                 {dn.status === 'pending' && (
-                  <button
-                    onClick={() => handleComplete(dn)}
-                    className="px-3 py-1.5 bg-green-50 border border-green-300 text-green-600 hover:bg-green-100 rounded-md text-sm font-bold"
-                  >
+                  <button onClick={() => handleComplete(dn)}
+                    className="px-3 py-1.5 bg-green-50 border border-green-300 text-green-600 hover:bg-green-100 rounded-md text-sm font-bold">
                     납품완료
                   </button>
                 )}
@@ -91,27 +84,23 @@ function DeliverySection() {
   );
 }
 
-// ── 메인 칸반보드 컴포넌트 ────────────────────────────
 function KanbanBoard() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDnModalOpen, setIsDnModalOpen] = useState(false);
   const [isOcrOpen, setIsOcrOpen] = useState(false);
   const [partners, setPartners] = useState([]);
   const [items, setItems] = useState([]);
   const [selectedPo, setSelectedPo] = useState(null);
+  const [editOrder, setEditOrder] = useState(null);
+
   const [newOrder, setNewOrder] = useState({
-    partner_id: '',
-    expected_date: '',
-    note: '',
+    partner_id: '', expected_date: '', note: '',
     items: [{ item_id: '', quantity: 1, unit_price: 0 }],
   });
-  const [newDn, setNewDn] = useState({
-    partner_id: '',
-    item_id: '',
-    quantity: 1,
-  });
+  const [newDn, setNewDn] = useState({ partner_id: '', item_id: '', quantity: 1 });
 
   const fetchOrders = () => {
     api.get('/api/purchasing/orders/')
@@ -123,9 +112,7 @@ function KanbanBoard() {
     fetchOrders();
     api.get('/api/inventory/items/').then(res => setItems(res.data));
     fetch('http://127.0.0.1:8000/api/inventory/partners/')
-      .then(r => r.json())
-      .then(data => setPartners(data))
-      .catch(() => {});
+      .then(r => r.json()).then(data => setPartners(data)).catch(() => {});
   }, []);
 
   const getByStatus = (status) => orders.filter(o => o.status === status);
@@ -155,10 +142,7 @@ function KanbanBoard() {
   };
 
   const handleCreateOrder = () => {
-    if (!newOrder.partner_id || newOrder.items.length === 0) {
-      alert('거래처와 품목을 입력하세요');
-      return;
-    }
+    if (!newOrder.partner_id || newOrder.items.length === 0) { alert('거래처와 품목을 입력하세요'); return; }
     api.post('/api/purchasing/orders/create/', newOrder)
       .then(res => {
         alert(`✅ ${res.data.po_number} 발주서 생성 완료`);
@@ -169,11 +153,70 @@ function KanbanBoard() {
       .catch(err => alert(err.response?.data?.error || '오류 발생'));
   };
 
+  // 수정 모달 열기
+  const handleOpenEdit = (order, e) => {
+    e.stopPropagation();
+    setEditOrder({
+      id: order.id,
+      po_number: order.po_number,
+      partner_id: String(order.partner_id),
+      expected_date: order.expected_date || '',
+      note: order.note || '',
+      items: order.items.map(i => ({
+        item_id: String(i.id),
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        item_name: i.item_name,
+      })),
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditItemChange = (index, field, value) => {
+    const updated = [...editOrder.items];
+    updated[index][field] = value;
+    setEditOrder({ ...editOrder, items: updated });
+  };
+
+  const handleEditAddItem = () => {
+    setEditOrder({ ...editOrder, items: [...editOrder.items, { item_id: '', quantity: 1, unit_price: 0 }] });
+  };
+
+  const handleEditRemoveItem = (index) => {
+    setEditOrder({ ...editOrder, items: editOrder.items.filter((_, i) => i !== index) });
+  };
+
+  const handleUpdateOrder = () => {
+    if (!editOrder.partner_id || editOrder.items.length === 0) { alert('거래처와 품목을 입력하세요'); return; }
+    api.put(`/api/purchasing/orders/${editOrder.id}/update/`, {
+      partner_id: editOrder.partner_id,
+      expected_date: editOrder.expected_date,
+      note: editOrder.note,
+      items: editOrder.items.map(i => ({
+        item_id: i.item_id,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+      })),
+    })
+      .then(res => {
+        alert(`✅ ${res.data.po_number} 수정 완료`);
+        setIsEditModalOpen(false);
+        setEditOrder(null);
+        fetchOrders();
+      })
+      .catch(err => alert(err.response?.data?.error || '오류 발생'));
+  };
+
+  const handleDeleteOrder = (order, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`${order.po_number} 발주서를 삭제하시겠습니까?`)) return;
+    api.delete(`/api/purchasing/orders/${order.id}/delete/`)
+      .then(() => { alert('삭제 완료'); setSelectedPo(null); fetchOrders(); })
+      .catch(err => alert(err.response?.data?.error || '삭제 실패'));
+  };
+
   const handleCreateDn = () => {
-    if (!newDn.partner_id || !newDn.item_id || newDn.quantity <= 0) {
-      alert('거래처, 품목, 수량을 입력하세요');
-      return;
-    }
+    if (!newDn.partner_id || !newDn.item_id || newDn.quantity <= 0) { alert('거래처, 품목, 수량을 입력하세요'); return; }
     api.post('/api/purchasing/delivery/create/', newDn)
       .then(res => {
         alert(`✅ ${res.data.dn_number} 납품지시서 생성 완료`);
@@ -196,20 +239,15 @@ function KanbanBoard() {
 
   return (
     <>
-      {/* ── 발주 섹션 ── */}
       <div className="flex justify-between items-end mb-8">
         <h1 className="text-3xl font-bold text-gray-800">발주 현황 보드</h1>
         <div className="flex gap-3">
-          <button
-            onClick={() => setIsOcrOpen(true)}
-            className="px-4 py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700"
-          >
+          <button onClick={() => setIsOcrOpen(true)}
+            className="px-4 py-2 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700">
             📄 납품서 OCR
           </button>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900"
-          >
+          <button onClick={() => setIsModalOpen(true)}
+            className="px-4 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900">
             + 신규 발주서 생성
           </button>
         </div>
@@ -218,7 +256,7 @@ function KanbanBoard() {
       {/* 칸반 보드 */}
       <div className="flex gap-6 overflow-x-auto pb-4 mb-12" style={{ minHeight: '400px' }}>
         {statusColumns.map(col => (
-         <div key={col.key} className="w-72 flex-shrink-0 bg-slate-100 rounded-xl p-4 flex flex-col gap-4 max-h-[600px] overflow-y-auto">
+          <div key={col.key} className="w-72 flex-shrink-0 bg-slate-100 rounded-xl p-4 flex flex-col gap-4 max-h-[600px] overflow-y-auto">
             <div className="flex justify-between items-center px-2 pt-2">
               <h2 className="text-lg font-bold text-gray-700">{col.label}</h2>
               <span className={`text-sm font-bold px-2 py-1 rounded-full ${col.badge}`}>
@@ -248,18 +286,30 @@ function KanbanBoard() {
                         [{i.item_code}] {i.item_name} × {i.quantity}개 ({i.unit_price.toLocaleString()}원)
                       </p>
                     ))}
-                    <div className="flex gap-2 mt-3">
+                    <div className="flex gap-2 mt-3 flex-wrap">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDownloadPdf(order.id); }}
-                        className="flex-1 py-1.5 bg-blue-50 border border-blue-300 text-blue-600 text-xs font-bold rounded-md hover:bg-blue-100"
-                      >
+                        className="flex-1 py-1.5 bg-blue-50 border border-blue-300 text-blue-600 text-xs font-bold rounded-md hover:bg-blue-100">
                         PDF 출력
                       </button>
+                      {order.status === 'draft' && (
+                        <button
+                          onClick={(e) => handleOpenEdit(order, e)}
+                          className="flex-1 py-1.5 bg-yellow-50 border border-yellow-300 text-yellow-600 text-xs font-bold rounded-md hover:bg-yellow-100">
+                          수정
+                        </button>
+                      )}
+                      {(order.status === 'draft' || order.status === 'cancelled') && (
+                        <button
+                          onClick={(e) => handleDeleteOrder(order, e)}
+                          className="flex-1 py-1.5 bg-red-50 border border-red-300 text-red-500 text-xs font-bold rounded-md hover:bg-red-100">
+                          삭제
+                        </button>
+                      )}
                       {nextStatus[order.status] && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleStatusChange(order.id, nextStatus[order.status]); }}
-                          className="flex-1 py-1.5 bg-green-50 border border-green-300 text-green-600 text-xs font-bold rounded-md hover:bg-green-100"
-                        >
+                          className="flex-1 py-1.5 bg-green-50 border border-green-300 text-green-600 text-xs font-bold rounded-md hover:bg-green-100">
                           {order.status === 'draft' ? '발송 완료' : '입고 완료'}
                         </button>
                       )}
@@ -272,7 +322,7 @@ function KanbanBoard() {
         ))}
       </div>
 
-      {/* ── 납품지시서 섹션 ── */}
+      {/* 납품지시서 섹션 */}
       <div className="flex justify-between items-end mb-6">
         <h2 className="text-2xl font-bold text-gray-800">납품지시서 현황</h2>
         <button onClick={() => setIsDnModalOpen(true)}
@@ -282,15 +332,10 @@ function KanbanBoard() {
       </div>
       <DeliverySection />
 
-      {/* ── OCR 모달 ── */}
-      {isOcrOpen && (
-        <OcrModal
-          onClose={() => setIsOcrOpen(false)}
-          onConfirm={fetchOrders}
-        />
-      )}
+      {/* OCR 모달 */}
+      {isOcrOpen && <OcrModal onClose={() => setIsOcrOpen(false)} onConfirm={fetchOrders} />}
 
-      {/* ── 신규 발주서 모달 ── */}
+      {/* 신규 발주서 모달 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-xl shadow-lg w-[600px] max-h-[80vh] overflow-y-auto">
@@ -351,7 +396,71 @@ function KanbanBoard() {
         </div>
       )}
 
-      {/* ── 납품지시서 모달 ── */}
+      {/* 발주서 수정 모달 */}
+      {isEditModalOpen && editOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white p-8 rounded-xl shadow-lg w-[600px] max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-800 mb-1">발주서 수정</h2>
+            <p className="text-sm text-gray-400 mb-6">{editOrder.po_number}</p>
+            <div className="flex flex-col gap-4 mb-6">
+              <div>
+                <label className="text-sm font-bold text-gray-700 block mb-2">거래처</label>
+                <select value={editOrder.partner_id}
+                  onChange={e => setEditOrder({ ...editOrder, partner_id: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white">
+                  <option value="">거래처 선택</option>
+                  {partners.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-bold text-gray-700 block mb-2">납기 예정일</label>
+                <input type="date" value={editOrder.expected_date}
+                  onChange={e => setEditOrder({ ...editOrder, expected_date: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2" />
+              </div>
+              <div>
+                <label className="text-sm font-bold text-gray-700 block mb-2">비고</label>
+                <input type="text" value={editOrder.note}
+                  onChange={e => setEditOrder({ ...editOrder, note: e.target.value })}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-2" />
+              </div>
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-bold text-gray-700">품목</label>
+                  <button onClick={handleEditAddItem} className="text-sm text-blue-600 font-bold">+ 품목 추가</button>
+                </div>
+                {editOrder.items.map((item, index) => (
+                  <div key={index} className="flex gap-2 mb-2 items-center">
+                    <select value={item.item_id}
+                      onChange={e => handleEditItemChange(index, 'item_id', e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                      <option value="">품목 선택</option>
+                      {items.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
+                    </select>
+                    <input type="number" placeholder="수량" value={item.quantity}
+                      onChange={e => handleEditItemChange(index, 'quantity', Number(e.target.value))}
+                      className="w-20 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right" />
+                    <input type="number" placeholder="단가" value={item.unit_price}
+                      onChange={e => handleEditItemChange(index, 'unit_price', Number(e.target.value))}
+                      className="w-24 border border-gray-300 rounded-lg px-2 py-2 text-sm text-right" />
+                    {editOrder.items.length > 1 && (
+                      <button onClick={() => handleEditRemoveItem(index)} className="text-red-400 font-bold text-lg">×</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t pt-5">
+              <button onClick={() => { setIsEditModalOpen(false); setEditOrder(null); }}
+                className="px-5 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-md">취소</button>
+              <button onClick={handleUpdateOrder}
+                className="px-5 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900">수정 완료</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 납품지시서 모달 */}
       {isDnModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-8 rounded-xl shadow-lg w-[500px]">

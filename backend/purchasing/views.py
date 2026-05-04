@@ -479,3 +479,64 @@ def ocr_po_complete(request):
             po.save()
 
     return Response({'message': f'{len(items)}건 입고완료 처리되었습니다'})
+
+
+# ── 발주서 수정 ───────────────────────────────────────
+@api_view(['PUT'])
+@permission_classes([])
+def po_update(request, po_id):
+    from inventory.models import Partner, Item
+    try:
+        po = PurchaseOrder.objects.get(id=po_id)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': '발주서를 찾을 수 없습니다'}, status=404)
+
+    if po.status != 'draft':
+        return Response({'error': '발주 대기 상태에서만 수정 가능합니다'}, status=400)
+
+    partner_id    = request.data.get('partner_id')
+    expected_date = request.data.get('expected_date')
+    note          = request.data.get('note', '')
+    items         = request.data.get('items', [])
+
+    try:
+        partner = Partner.objects.get(id=partner_id)
+    except Partner.DoesNotExist:
+        return Response({'error': '거래처를 찾을 수 없습니다'}, status=404)
+
+    with transaction.atomic():
+        po.partner       = partner
+        po.expected_date = expected_date
+        po.note          = note
+        po.save()
+
+        po.items.all().delete()
+        for item_data in items:
+            try:
+                item = Item.objects.get(id=item_data['item_id'])
+            except Item.DoesNotExist:
+                continue
+            PurchaseOrderItem.objects.create(
+                po=po,
+                item=item,
+                quantity=item_data.get('quantity', 1),
+                unit_price=item_data.get('unit_price', 0),
+            )
+
+    return Response({'message': '발주서 수정 완료', 'po_number': po.po_number})
+
+
+# ── 발주서 삭제 ───────────────────────────────────────
+@api_view(['DELETE'])
+@permission_classes([])
+def po_delete(request, po_id):
+    try:
+        po = PurchaseOrder.objects.get(id=po_id)
+    except PurchaseOrder.DoesNotExist:
+        return Response({'error': '발주서를 찾을 수 없습니다'}, status=404)
+
+    if po.status not in ['draft', 'cancelled']:
+        return Response({'error': '발주 대기 또는 취소 상태에서만 삭제 가능합니다'}, status=400)
+
+    po.delete()
+    return Response({'message': '발주서 삭제 완료'})
